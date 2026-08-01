@@ -1,0 +1,6 @@
+name: SimpleVeinEnchants
+version: 1.0
+main: dev.xeaf.simpleveinenchants.SimpleVeinEnchants
+bootstrapper: dev.xeaf.simpleveinenchants.SimpleVeinEnchantsBootstrap
+api-version: '26.1'
+folia-supported: true
