@@ -1,42 +1,37 @@
 package dev.xeaf.simpleveinenchants;
 
-import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
-import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
+import io.papermc.paper.registry.RegistryKey;
+import io.papermc.paper.registry.TypedKey;
+import net.kyori.adventure.key.Key;
 import org.bukkit.Axis;
 import org.bukkit.Location;
 import org.bukkit.Material;
-import org.bukkit.NamespacedKey;
+import org.bukkit.Registry;
 import org.bukkit.block.Block;
 import org.bukkit.block.data.Ageable;
 import org.bukkit.block.data.Orientable;
+import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.ExperienceOrb;
 import org.bukkit.entity.Player;
-import org.bukkit.entity.Villager;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
-import org.bukkit.event.enchantment.EnchantItemEvent;
-import org.bukkit.event.entity.VillagerAcquireTradeEvent;
-import org.bukkit.event.inventory.PrepareAnvilEvent;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.MerchantRecipe;
 import org.bukkit.inventory.meta.Damageable;
 import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
-import net.kyori.adventure.text.Component;
+import org.bukkit.util.Vector;
 
 import java.lang.reflect.Method;
 import java.util.*;
-import java.util.concurrent.ThreadLocalRandom;
 
 public class SimpleVeinEnchants extends JavaPlugin implements Listener {
 
-    private NamespacedKey VEINMINE_KEY;
-    private NamespacedKey LUMBERJACK_KEY;
-    private NamespacedKey HARVEST_KEY;
+    public static final TypedKey<Enchantment> VEINMINE_KEY = TypedKey.create(RegistryKey.ENCHANTMENT, Key.key("xeaf:veinmine"));
+    public static final TypedKey<Enchantment> LUMBERJACK_KEY = TypedKey.create(RegistryKey.ENCHANTMENT, Key.key("xeaf:lumberjack"));
+    public static final TypedKey<Enchantment> HARVEST_KEY = TypedKey.create(RegistryKey.ENCHANTMENT, Key.key("xeaf:harvest"));
+    public static final TypedKey<Enchantment> EXCAVATOR_KEY = TypedKey.create(RegistryKey.ENCHANTMENT, Key.key("xeaf:excavator"));
 
-    // --- CROSS-COMPATIBILITY FOLIA BRIDGE ---
     private static final boolean IS_FOLIA = checkFolia();
     private static Method isOwnedMethod;
 
@@ -61,8 +56,6 @@ public class SimpleVeinEnchants extends JavaPlugin implements Listener {
 
     private boolean isSafeToProcess(Block block) {
         if (!block.getWorld().isChunkLoaded(block.getX() >> 4, block.getZ() >> 4)) return false;
-
-        // If on Folia, dynamically invoke region check to prevent cross-thread crashes
         if (IS_FOLIA && isOwnedMethod != null) {
             try {
                 return (boolean) isOwnedMethod.invoke(null, block.getLocation());
@@ -70,58 +63,20 @@ public class SimpleVeinEnchants extends JavaPlugin implements Listener {
                 return false;
             }
         }
-
-        // Standard Paper/Spigot is strictly single-threaded, so it's always safe
         return true;
     }
-    // ----------------------------------------
 
     @Override
     public void onEnable() {
-        VEINMINE_KEY = new NamespacedKey(this, "veinmine");
-        LUMBERJACK_KEY = new NamespacedKey(this, "lumberjack");
-        HARVEST_KEY = new NamespacedKey(this, "harvest");
-
         getServer().getPluginManager().registerEvents(this, this);
-
-        if (IS_FOLIA) {
-            getLogger().info("SimpleVeinEnchants loaded! Running in Folia Multithreaded Mode.");
-        } else {
-            getLogger().info("SimpleVeinEnchants loaded! Running in Standard Paper/Spigot Mode.");
-        }
+        getLogger().info("SimpleVeinEnchants Loaded!");
     }
 
-    private int getEnchantLevel(ItemStack item, NamespacedKey key) {
-        if (item == null || !item.hasItemMeta()) return 0;
-        return Math.min(5, item.getItemMeta().getPersistentDataContainer().getOrDefault(key, PersistentDataType.INTEGER, 0));
-    }
-
-    private void applyEnchant(ItemMeta meta, NamespacedKey key, String name, int level) {
-        if (level <= 0) return;
-        meta.getPersistentDataContainer().set(key, PersistentDataType.INTEGER, level);
-
-        String roman = switch (level) {
-            case 1 -> "I"; case 2 -> "II"; case 3 -> "III"; case 4 -> "IV"; case 5 -> "V"; default -> String.valueOf(level);
-        };
-
-        Component lineComponent = LegacyComponentSerializer.legacySection().deserialize("§7" + name + " " + roman);
-        List<Component> lore = meta.lore() != null ? meta.lore() : new ArrayList<>();
-
-        lore.removeIf(comp -> PlainTextComponentSerializer.plainText().serialize(comp).contains(name));
-        lore.add(0, lineComponent);
-        meta.lore(lore);
-    }
-
-    private boolean isApplicable(ItemStack item, String type) {
-        Material mat = item.getType();
-        if (mat == Material.ENCHANTED_BOOK || mat == Material.BOOK) return true;
-        String name = mat.name();
-        return switch (type) {
-            case "veinmine" -> name.endsWith("_PICKAXE") || name.endsWith("_SHOVEL");
-            case "lumberjack" -> name.endsWith("_AXE");
-            case "harvest" -> name.endsWith("_HOE");
-            default -> false;
-        };
+    private int getEnchantLevel(ItemStack tool, TypedKey<Enchantment> typedKey) {
+        if (tool == null || !tool.hasItemMeta()) return 0;
+        Enchantment enchant = Registry.ENCHANTMENT.get(typedKey.key());
+        if (enchant == null) return 0;
+        return tool.getEnchantmentLevel(enchant);
     }
 
     private boolean isOre(Material material) {
@@ -129,8 +84,14 @@ public class SimpleVeinEnchants extends JavaPlugin implements Listener {
         return name.endsWith("_ORE") || material == Material.ANCIENT_DEBRIS || name.endsWith("RAW_COPPER_BLOCK") || name.endsWith("RAW_IRON_BLOCK") || name.endsWith("RAW_GOLD_BLOCK");
     }
 
+    private boolean isExcavatorBlock(Material material) {
+        return material == Material.STONE || material == Material.DEEPSLATE ||
+               material == Material.COBBLESTONE || material == Material.COBBLED_DEEPSLATE ||
+               material == Material.NETHERRACK;
+    }
+
     private String getBaseOreName(Material material) {
-        return material.name().replace("DEEPSLATE_", "");
+        return material.name().replace("DEEPSLATE_", "").replace("STONE_", "").replace("NETHER_", "");
     }
 
     private boolean isVerticalLog(Block block) {
@@ -160,94 +121,6 @@ public class SimpleVeinEnchants extends JavaPlugin implements Listener {
         };
     }
 
-    @EventHandler
-    public void onAnvil(PrepareAnvilEvent event) {
-        ItemStack left = event.getInventory().getItem(0);
-        ItemStack right = event.getInventory().getItem(1);
-        if (left == null || right == null) return;
-
-        ItemStack result = left.clone();
-        ItemMeta resultMeta = result.getItemMeta();
-        if (resultMeta == null) return;
-
-        if (result.getType() == Material.BOOK) result.setType(Material.ENCHANTED_BOOK);
-
-        boolean updated = false;
-        int totalCost = 0;
-
-        String[] types = {"veinmine", "lumberjack", "harvest"};
-        NamespacedKey[] keys = {VEINMINE_KEY, LUMBERJACK_KEY, HARVEST_KEY};
-        String[] names = {"Veinmine", "Lumberjack", "Harvest"};
-
-        for (int i = 0; i < 3; i++) {
-            int leftLvl = getEnchantLevel(left, keys[i]);
-            int rightLvl = getEnchantLevel(right, keys[i]);
-
-            if (rightLvl > 0 && isApplicable(left, types[i])) {
-                int newLvl = (leftLvl == rightLvl) ? Math.min(5, leftLvl + 1) : Math.max(leftLvl, rightLvl);
-                if (newLvl > leftLvl) {
-                    applyEnchant(resultMeta, keys[i], names[i], newLvl);
-                    updated = true;
-                    totalCost += newLvl * 2;
-                }
-            }
-        }
-
-        if (updated) {
-            result.setItemMeta(resultMeta);
-            event.setResult(result);
-            event.getInventory().setRepairCost(Math.max(1, totalCost));
-        }
-    }
-
-    @EventHandler
-    public void onEnchant(EnchantItemEvent event) {
-        if (event.getExpLevelCost() >= 30 && ThreadLocalRandom.current().nextDouble() < 0.35) {
-            List<Integer> validIndexes = new ArrayList<>();
-            String[] types = {"veinmine", "lumberjack", "harvest"};
-            for (int i = 0; i < 3; i++) {
-                if (isApplicable(event.getItem(), types[i])) validIndexes.add(i);
-            }
-
-            if (!validIndexes.isEmpty()) {
-                int choice = validIndexes.get(ThreadLocalRandom.current().nextInt(validIndexes.size()));
-                NamespacedKey[] keys = {VEINMINE_KEY, LUMBERJACK_KEY, HARVEST_KEY};
-                String[] names = {"Veinmine", "Lumberjack", "Harvest"};
-                int level = ThreadLocalRandom.current().nextInt(1, 4);
-
-                ItemMeta meta = event.getItem().getItemMeta();
-                if (meta != null) {
-                    applyEnchant(meta, keys[choice], names[choice], level);
-                    event.getItem().setItemMeta(meta);
-                }
-            }
-        }
-    }
-
-    @EventHandler
-    public void onVillagerTrade(VillagerAcquireTradeEvent event) {
-        if (event.getEntity() instanceof Villager villager && villager.getProfession() == Villager.Profession.LIBRARIAN) {
-            if (ThreadLocalRandom.current().nextDouble() < 0.25) {
-                int choice = ThreadLocalRandom.current().nextInt(3);
-                NamespacedKey[] keys = {VEINMINE_KEY, LUMBERJACK_KEY, HARVEST_KEY};
-                String[] names = {"Veinmine", "Lumberjack", "Harvest"};
-                int level = ThreadLocalRandom.current().nextInt(1, 4);
-
-                ItemStack book = new ItemStack(Material.ENCHANTED_BOOK);
-                ItemMeta meta = book.getItemMeta();
-                applyEnchant(meta, keys[choice], names[choice], level);
-                book.setItemMeta(meta);
-
-                int emeraldCost = ThreadLocalRandom.current().nextInt(12, 37);
-                MerchantRecipe recipe = new MerchantRecipe(book, 12);
-                recipe.addIngredient(new ItemStack(Material.EMERALD, emeraldCost));
-                recipe.addIngredient(new ItemStack(Material.BOOK, 1));
-
-                event.setRecipe(recipe);
-            }
-        }
-    }
-
     @EventHandler(ignoreCancelled = true)
     public void onBlockBreak(BlockBreakEvent event) {
         Player player = event.getPlayer();
@@ -257,6 +130,7 @@ public class SimpleVeinEnchants extends JavaPlugin implements Listener {
         int vLvl = getEnchantLevel(tool, VEINMINE_KEY);
         int lLvl = getEnchantLevel(tool, LUMBERJACK_KEY);
         int hLvl = getEnchantLevel(tool, HARVEST_KEY);
+        int eLvl = getEnchantLevel(tool, EXCAVATOR_KEY);
 
         String mode = "";
         int maxBlocks = 0;
@@ -268,49 +142,110 @@ public class SimpleVeinEnchants extends JavaPlugin implements Listener {
             mode = "lumberjack"; maxBlocks = lLvl * 64;
         } else if (hLvl > 0 && isMatureCrop(startBlock)) {
             mode = "harvest"; maxBlocks = hLvl * 64;
+        } else if (eLvl > 0 && isExcavatorBlock(targetMat) && tool.getType().name().endsWith("_PICKAXE")) {
+            mode = "excavator"; maxBlocks = -1; // Excavator uses a fixed bounds system, not a dynamic limit
         } else {
             return;
         }
 
         event.setCancelled(true);
-
         Set<Block> toBreak = new HashSet<>();
-        Queue<Block> queue = new LinkedList<>();
-        Set<Block> visited = new HashSet<>();
 
-        queue.add(startBlock);
-        visited.add(startBlock);
+        if (mode.equals("excavator")) {
+            toBreak.add(startBlock);
+            Vector dir = player.getLocation().getDirection();
+            int minX = 0, maxX = 0, minY = 0, maxY = 0, minZ = 0, maxZ = 0;
 
-        while (!queue.isEmpty() && toBreak.size() < maxBlocks) {
-            Block current = queue.poll();
-            toBreak.add(current);
+            if (eLvl == 1) {
+                minY = -1; // 1x2 Vertical
+            } else if (eLvl == 2 || eLvl == 3) {
+                // 2x2 cross-section, mapped to player direction (same plane as level 2)
+                if (Math.abs(dir.getY()) > 0.5) { maxX = 1; maxZ = 1; }
+                else if (Math.abs(dir.getX()) > Math.abs(dir.getZ())) { maxY = -1; maxZ = 1; }
+                else { maxX = 1; maxY = -1; }
 
-            for (int dx = -1; dx <= 1; dx++) {
-                for (int dy = (mode.equals("harvest") ? 0 : -1); dy <= (mode.equals("harvest") ? 0 : 1); dy++) {
-                    for (int dz = -1; dz <= 1; dz++) {
+                if (eLvl == 3) {
+                    // 2x2x2: extend the depth axis forward one more block, starting FROM
+                    // the target block rather than centering on it, so a continuous
+                    // tunnel doesn't re-target already-broken blocks or leave gaps.
+                    if (Math.abs(dir.getY()) > 0.5) {
+                        if (dir.getY() > 0) { maxY = 1; } else { minY = -1; }
+                    } else if (Math.abs(dir.getX()) > Math.abs(dir.getZ())) {
+                        if (dir.getX() > 0) { maxX = 1; } else { minX = -1; }
+                    } else {
+                        if (dir.getZ() > 0) { maxZ = 1; } else { minZ = -1; }
+                    }
+                }
+            } else if (eLvl == 4 || eLvl >= 5) {
+                // 3x3 cross-section, centered on the target block (same plane as level 4)
+                if (Math.abs(dir.getY()) > 0.5) { minX = -1; maxX = 1; minZ = -1; maxZ = 1; }
+                else if (Math.abs(dir.getX()) > Math.abs(dir.getZ())) { minY = -1; maxY = 1; minZ = -1; maxZ = 1; }
+                else { minX = -1; maxX = 1; minY = -1; maxY = 1; }
+
+                if (eLvl >= 5) {
+                    // 3x3x3: extend the depth axis forward two more blocks, starting FROM
+                    // the target block (first layer) rather than centering on it.
+                    if (Math.abs(dir.getY()) > 0.5) {
+                        if (dir.getY() > 0) { maxY = 2; } else { minY = -2; }
+                    } else if (Math.abs(dir.getX()) > Math.abs(dir.getZ())) {
+                        if (dir.getX() > 0) { maxX = 2; } else { minX = -2; }
+                    } else {
+                        if (dir.getZ() > 0) { maxZ = 2; } else { minZ = -2; }
+                    }
+                }
+            }
+
+            for (int dx = minX; dx <= maxX; dx++) {
+                for (int dy = minY; dy <= maxY; dy++) {
+                    for (int dz = minZ; dz <= maxZ; dz++) {
                         if (dx == 0 && dy == 0 && dz == 0) continue;
-                        Block neighbor = current.getRelative(dx, dy, dz);
+                        Block neighbor = startBlock.getRelative(dx, dy, dz);
 
-                        if (!visited.add(neighbor)) continue;
+                        if (isExcavatorBlock(neighbor.getType()) && isSafeToProcess(neighbor)) {
+                            toBreak.add(neighbor);
+                        }
+                    }
+                }
+            }
+        } else {
+            // Standard Breadth-First Search for Veinmine, Lumberjack, and Harvest
+            Queue<Block> queue = new LinkedList<>();
+            Set<Block> visited = new HashSet<>();
 
-                        // Universal compatibility check
-                        if (!isSafeToProcess(neighbor)) continue;
+            queue.add(startBlock);
+            visited.add(startBlock);
 
-                        boolean isValid = switch (mode) {
-                            case "veinmine" -> getBaseOreName(neighbor.getType()).equals(getBaseOreName(targetMat)) && isOre(neighbor.getType());
-                            case "lumberjack" -> neighbor.getType() == targetMat && isVerticalLog(neighbor);
-                            case "harvest" -> neighbor.getType() == targetMat && isMatureCrop(neighbor);
-                            default -> false;
-                        };
+            while (!queue.isEmpty() && toBreak.size() < maxBlocks) {
+                Block current = queue.poll();
+                toBreak.add(current);
 
-                        if (isValid) queue.add(neighbor);
+                for (int dx = -1; dx <= 1; dx++) {
+                    for (int dy = (mode.equals("harvest") ? 0 : -1); dy <= (mode.equals("harvest") ? 0 : 1); dy++) {
+                        for (int dz = -1; dz <= 1; dz++) {
+                            if (dx == 0 && dy == 0 && dz == 0) continue;
+                            Block neighbor = current.getRelative(dx, dy, dz);
+
+                            if (!visited.add(neighbor)) continue;
+                            if (!isSafeToProcess(neighbor)) continue;
+
+                            boolean isValid = switch (mode) {
+                                case "veinmine" -> getBaseOreName(neighbor.getType()).equals(getBaseOreName(targetMat)) && isOre(neighbor.getType());
+                                case "lumberjack" -> neighbor.getType() == targetMat && isVerticalLog(neighbor);
+                                case "harvest" -> neighbor.getType() == targetMat && isMatureCrop(neighbor);
+                                default -> false;
+                            };
+
+                            if (isValid) queue.add(neighbor);
+                        }
                     }
                 }
             }
         }
 
+        // Universal Drop Processing
         for (Block block : toBreak) {
             Collection<ItemStack> drops = block.getDrops(tool);
+
             if (mode.equals("harvest")) {
                 Ageable data = (Ageable) block.getBlockData();
                 data.setAge(0);
