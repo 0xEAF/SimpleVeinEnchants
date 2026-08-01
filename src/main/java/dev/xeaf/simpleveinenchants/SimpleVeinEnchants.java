@@ -84,10 +84,20 @@ public class SimpleVeinEnchants extends JavaPlugin implements Listener {
         return name.endsWith("_ORE") || material == Material.ANCIENT_DEBRIS || name.endsWith("RAW_COPPER_BLOCK") || name.endsWith("RAW_IRON_BLOCK") || name.endsWith("RAW_GOLD_BLOCK");
     }
 
+    private static final Set<Material> EXCAVATOR_BLOCKS = EnumSet.of(
+            Material.STONE, Material.GRANITE, Material.DIORITE, Material.ANDESITE, Material.TUFF,
+            Material.DEEPSLATE, Material.COBBLED_DEEPSLATE, Material.CALCITE, Material.DRIPSTONE_BLOCK,
+            Material.NETHERRACK, Material.BASALT, Material.SMOOTH_BASALT, Material.BLACKSTONE, Material.GILDED_BLACKSTONE,
+            Material.MAGMA_BLOCK, Material.OBSIDIAN, Material.CRYING_OBSIDIAN, Material.AMETHYST_BLOCK, Material.BUDDING_AMETHYST,
+            Material.END_STONE, Material.PURPUR_BLOCK, Material.END_STONE_BRICKS, Material.COBBLESTONE, Material.STONE_BRICKS,
+            Material.CRACKED_STONE_BRICKS, Material.CHISELED_STONE_BRICKS, Material.DEEPSLATE_BRICKS, Material.CRACKED_DEEPSLATE_BRICKS,
+            Material.DEEPSLATE_TILES, Material.CRACKED_DEEPSLATE_TILES, Material.REINFORCED_DEEPSLATE, Material.INFESTED_STONE,
+            Material.INFESTED_COBBLESTONE, Material.INFESTED_STONE_BRICKS, Material.INFESTED_CRACKED_STONE_BRICKS,
+            Material.INFESTED_CHISELED_STONE_BRICKS
+    );
+
     private boolean isExcavatorBlock(Material material) {
-        return material == Material.STONE || material == Material.DEEPSLATE ||
-               material == Material.COBBLESTONE || material == Material.COBBLED_DEEPSLATE ||
-               material == Material.NETHERRACK;
+        return EXCAVATOR_BLOCKS.contains(material);
     }
 
     private String getBaseOreName(Material material) {
